@@ -1,0 +1,71 @@
+# Local infrastructure for WeBox.
+#
+#   docker compose up -d
+#
+# Starts the two services the application expects:
+#   * MySQL 8 on 3306  - the system of record (standalone server, NOT an embedded database)
+#   * Redis 7 on 6379  - a degradable accelerator for the menu cache, order idempotency and
+#                        order-number issuance. The application keeps working without it.
+#
+# If you already run MySQL or Redis locally, skip this file and point the environment
+# variables in .env.example at your instances instead.
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: webox-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root1234
+      MYSQL_DATABASE: webox
+      MYSQL_USER: webox
+      MYSQL_PASSWORD: webox1234
+      TZ: UTC
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # Store audit timestamps in UTC; the application also pins hibernate.jdbc.time_zone=UTC.
+      - --default-time-zone=+00:00
+    ports:
+      - "3306:3306"
+    volumes:
+      - webox-mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uwebox", "-pwebox1234"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 30s
+
+  # Creates the integration-test schema next to the main one.
+  mysql-init:
+    image: mysql:8.0
+    depends_on:
+      mysql:
+        condition: service_healthy
+    entrypoint:
+      - bash
+      - -c
+      - >
+        mysql -h mysql -uwebox -pwebox1234
+        -e "CREATE DATABASE IF NOT EXISTS webox_test
+        CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;"
+    restart: "no"
+
+  redis:
+    image: redis:7-alpine
+    container_name: webox-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - webox-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  webox-mysql-data:
+  webox-redis-data:

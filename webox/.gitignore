@@ -1,0 +1,27 @@
+# Build output
+backend/target/
+frontend/dist/
+frontend/node_modules/
+
+# Local secrets and machine-specific configuration
+.env
+.env.local
+*.local
+
+# Runtime data
+backend/data/
+data/uploads/
+*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Local infrastructure artifacts, if someone points MySQL/Redis inside the repo
+mysql-data/
+redis-data/

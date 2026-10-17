@@ -1,0 +1,142 @@
+server:
+  port: ${WEBOX_SERVER_PORT:8080}
+  shutdown: graceful
+  error:
+    include-message: never
+    include-stacktrace: never
+
+spring:
+  application:
+    name: webox
+
+  config:
+    # Makes the documented `cp .env.example .env` step actually take effect: Spring Boot has no
+    # built-in .env support, so the file is imported explicitly as properties. Both the repository
+    # root and backend/ are searched, because the working directory differs between
+    # `./mvnw spring-boot:run` (backend/) and `java -jar` from the root. `optional:` keeps the
+    # application starting when the file is absent - environment variables work just as well.
+    import:
+      - optional:file:./.env[.properties]
+      - optional:file:../.env[.properties]
+
+  datasource:
+    url: ${WEBOX_DB_URL:jdbc:mysql://localhost:3306/webox?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8&useUnicode=true}
+    username: ${WEBOX_DB_USERNAME:webox}
+    password: ${WEBOX_DB_PASSWORD:webox1234}
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 10000
+      pool-name: webox-pool
+
+  jpa:
+    # Schema is owned by Flyway. Never let Hibernate mutate it.
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+          batch_size: 50
+        order_inserts: true
+        order_updates: true
+        format_sql: false
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  data:
+    redis:
+      host: ${WEBOX_REDIS_HOST:localhost}
+      port: ${WEBOX_REDIS_PORT:6379}
+      password: ${WEBOX_REDIS_PASSWORD:}
+      timeout: 2s
+      connect-timeout: 2s
+      lettuce:
+        shutdown-timeout: 100ms
+
+  servlet:
+    multipart:
+      max-file-size: 2MB
+      max-request-size: 4MB
+
+  jackson:
+    default-property-inclusion: non_null
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: true
+
+webox:
+  time-zone: ${WEBOX_TIME_ZONE:Asia/Shanghai}
+  jwt:
+    # No secret is committed. If left blank an ephemeral secret is generated at
+    # startup (tokens stop working after a restart). Set this in any real deployment.
+    secret: ${WEBOX_JWT_SECRET:}
+    ttl-hours: ${WEBOX_JWT_TTL_HOURS:8}
+  cors:
+    allowed-origins: ${WEBOX_CORS_ORIGINS:http://localhost:5173,http://127.0.0.1:5173}
+  storage:
+    upload-dir: ${WEBOX_UPLOAD_DIR:./data/uploads}
+  menu-cache:
+    ttl-minutes: ${WEBOX_MENU_CACHE_TTL_MINUTES:10}
+  order:
+    max-items-per-order: 5
+    idempotency-ttl-hours: 24
+    max-advance-days: 7
+  seed:
+    # Idempotent seeding: admin account, dish catalog, today's and tomorrow's menu.
+    enabled: ${WEBOX_SEED_ENABLED:true}
+    admin-email: ${WEBOX_SEED_ADMIN_EMAIL:admin@webox.com}
+    admin-password: ${WEBOX_SEED_ADMIN_PASSWORD:Admin1234}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      show-details: always
+  health:
+    # Redis is an optional accelerator: the application reads the menu from MySQL, falls back to
+    # the database unique index for idempotency, and issues order numbers with a random sequence
+    # when Redis is unreachable. Leaving this contributor enabled would make /actuator/health
+    # report 503 on a perfectly healthy, fully functional instance, so it is opt-in.
+    # Set MANAGEMENT_HEALTH_REDIS_ENABLED=true to include Redis in the health status.
+    redis:
+      enabled: ${MANAGEMENT_HEALTH_REDIS_ENABLED:false}
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: alpha
+  api-docs:
+    path: /v3/api-docs
+
+logging:
+  level:
+    root: INFO
+    com.webox: DEBUG
+    org.hibernate.SQL: INFO
+
+---
+# Integration-test profile: dedicated schema, schema rebuilt from Flyway on every run.
+spring:
+  config:
+    activate:
+      on-profile: integration
+  datasource:
+    url: ${WEBOX_TEST_DB_URL:jdbc:mysql://localhost:3306/webox_test?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC&characterEncoding=UTF-8&useUnicode=true}
+    username: ${WEBOX_DB_USERNAME:webox}
+    password: ${WEBOX_DB_PASSWORD:webox1234}
+  flyway:
+    clean-disabled: false
+    clean-on-validation-error: true
+
+webox:
+  seed:
+    enabled: false
